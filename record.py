@@ -46,7 +46,6 @@ def main() -> None:
     shutil.copy(args.config, sess / "config.yaml")
     log.info(f"Session folder: {sess}")
 
-    # strict=True refuses configs that violate xwr's known hardware constraints
     awr = xwr.XWRSystem(radar=cfg["radar"], capture=cfg["capture"], strict=True)
     rc = awr.config
     meta = {
@@ -81,7 +80,7 @@ def main() -> None:
     if args.duration:
         threading.Timer(args.duration, stop.set).start()
 
-    q = awr.qstream(numpy=False)  # worker thread fills the queue; we only write bytes
+    q = awr.qstream(numpy=False)  
     n = incomplete = 0
     t_report = time.time()
     n_report = 0
@@ -113,7 +112,6 @@ def main() -> None:
             awr.stop()
             if motor:
                 motor.stop()
-            # drain anything still queued so the last beams are kept
             while True:
                 try:
                     frame = q.get_nowait()

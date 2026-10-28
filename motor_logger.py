@@ -1,10 +1,9 @@
 """Read motor readings (angle or ticks) from an Arduino over USB serial and stamp
 each line with this computer's clock (time.time()).
 
-The Arduino sketch just prints one reading per line, e.g. Serial.println(ticks);
-Close the Arduino IDE's Serial Monitor first (only one program can use the port).
+The Arduino sketch should just print one reading per line, e.g. Serial.println(ticks);
 
-    python arduino_logger.py --port /dev/ttyACM2 --out motor.csv          # own log
+    python arduino_logger.py --port /dev/ttyACM2 --out motor.csv          
     python record.py --motor-cmd "python3 arduino_logger.py --port /dev/ttyACM2"
 """
 
@@ -13,7 +12,7 @@ import signal
 import sys
 import time
  
-import serial  # pip install pyserial
+import serial  # pip install pyserial inside venv
 import yaml
  
  
@@ -46,13 +45,13 @@ def main() -> None:
     signal.signal(signal.SIGTERM, stop)
  
     ser = serial.serial_for_url(a.port, a.baud, timeout=0.5)
-    ser.reset_input_buffer()  # drop anything buffered before we started
+    ser.reset_input_buffer()  
     out = open(a.out, "w") if a.out else sys.stdout
     out.write("timestamp,value\n")
     t_end = time.time() + a.duration if a.duration else None
     n = 0
     last_report = None  # (time, total turned) at the previous speed readout
-    prev, total = None, 0.0  # running total, so wrapped 0..360 degrees still count up
+    prev, total = None, 0.0  
     try:
         while running and not (t_end and time.time() > t_end):
             line = ser.readline()

@@ -1,5 +1,5 @@
 """Print shapes, timestamps and rotations of PanoRadar trajectory folders,
-to compare yours with the sample dataset.
+for comparison with the sample dataset.
 
     python inspect_traj.py <sample traj folder> <your traj folder>
 """

@@ -4,7 +4,7 @@
         --building ~/PanoRadar/data/raw/lab1_static --r-radar 0.08
 
 Each rotation (motor angle passing --zero-angle) becomes one PanoRadar frame.
-Keep "static" in the building folder name. LiDAR/IMU files are zero placeholders.
+Keep "static" in the building folder name. LiDAR/IMU files are zero placeholders for now.
 """
 
 from __future__ import annotations

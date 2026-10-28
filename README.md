@@ -1,10 +1,8 @@
-# fireflight-radar-testing
-
 # FireFlight radar testing
 
-Record raw data from a TI **AWR1843Boost + DCA1000EVM** on a rotating platform,
-convert it to the [PanoRadar](https://github.com/penn-waves-lab/PanoRadar)
-dataset format, and image it with PanoRadar's own, unmodified code.
+Records raw data from a TI **AWR1843Boost + DCA1000EVM** on a rotating platform,
+converts it to the [PanoRadar](https://github.com/penn-waves-lab/PanoRadar)
+dataset format, and images it with PanoRadar's code (does not implement full ML pipeline).
 
 ```
 radar   ──► record.py ───────┐
@@ -14,24 +12,23 @@ Arduino ──► motor_logger.py ─┘
 
 | File | What it does |
 |---|---|
-| `config.yaml` | Radar settings + your platform's measurements (**you fill in the `platform:` part**) |
-| `record.py` | Records the radar into `sessions/<name>_<date-time>/` |
+| `config.yaml` | Radar settings & platform measurements, mostly the same as PanoRadar but need to fill in `platform:` with our radar measurements |
+| `record.py` | Records the radar data into `sessions/<name>_<date-time>/` |
 | `motor_logger.py` | Reads the Arduino's motor readings and stamps each with the PC clock |
-| `build_traj.py` | Combines radar + motor log into PanoRadar's 7-file format |
+| `build_traj.py` | Combines radar & motor log into PanoRadar's 7-file format |
 | `simulate_session.py` | Makes a fake recording, for testing without the radar |
 | `inspect_traj.py` | Prints a data folder's format, to compare with PanoRadar's sample |
+| `bag_to_session.py` | Turns a ROS 2 bag recording into a session folder (C6) |
 
 Paths below assume this repo is at `~/fireflight-radar-testing`, PanoRadar at
-`~/PanoRadar`, and the PanoRadar sample dataset at `~/Downloads/design`.
+`~/PanoRadar`, and the PanoRadar sample dataset at `~/Downloads/[name]`.
 
 > [!IMPORTANT]
-> **Two things to get right for real recordings:**
-> 1. **Motor speed: 1200 beams per rotation.** The radar takes a beam every
->    0.491 ms, so the platform must turn at **1.70 rev/s (102 rpm)** to match
->    the PanoRadar dataset. `motor_logger.py` shows this live.
+> **Edit using real radar:**
+> 1. **Motor speed: 1200 beams per rotation.** PR takes a beam every 0.491ms, so platform needs to turn at 1.70 rev/s (102rpm) to match the dataset (live rpm visible in motor_logger.py).
 > 2. **Rotation radius in `config.yaml`.** Measure it (see
 >    [Measuring the rotation radius](#measuring-the-rotation-radius)) and set
->    `platform: r_radar_m`. `build_traj.py` won't convert real data without it.
+>    `platform: r_radar_m`.
 
 ---
 
@@ -45,21 +42,19 @@ sudo apt update
 sudo apt install -y git curl wget build-essential python3-dev python3-pip python3-venv
 ```
 
-### A2. Check the NVIDIA GPU (PanoRadar needs one)
+### A2. Check the NVIDIA GPU 
 
 ```bash
 nvidia-smi
 ```
+If cmd not found, install the driver with `sudo ubuntu-drivers autoinstall` then reboot.
 
-It should show your GPU. If it says "command not found", install the driver
-with `sudo ubuntu-drivers autoinstall`, then `sudo reboot`.
-
-### A3. Install Miniconda (once)
+### A3. Install Miniconda
 
 ```bash
 cd ~/Downloads
 wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-bash Miniconda3-latest-Linux-x86_64.sh     # press Enter / type "yes" at each prompt
+bash Miniconda3-latest-Linux-x86_64.sh    
 source ~/.bashrc
 ```
 
@@ -69,11 +64,11 @@ source ~/.bashrc
    ```bash
    cd ~/fireflight-radar-testing
    ```
-2. Create the environment (a folder called `.venv`; git ignores it):
+2. Create the environment (git ignored):
    ```bash
    python3 -m venv .venv
    ```
-3. Turn it on. Your prompt now starts with `(.venv)`:
+3. Turn it on: 
    ```bash
    source .venv/bin/activate
    ```
@@ -93,44 +88,43 @@ source ~/.bashrc
    cd ~ && git clone https://github.com/penn-waves-lab/PanoRadar.git
    cd ~/PanoRadar
    ```
-2. Create and turn on the environment. Your prompt now starts with `(panoradar)`:
+2. Create and turn on the environment:
    ```bash
    conda create -y --name panoradar python=3.10
    conda activate panoradar
    ```
-3. Install PanoRadar's packages. CuPy is skipped here and added in the next
-   step, because their pinned version doesn't install on new CUDA:
+3. Install PanoRadar's packages (CuPy skipped in this step because the PanoRadar version wouldn't install on my CUDA (13)):
    ```bash
    grep -v '^cupy' requirements.txt > /tmp/req.txt
    python -m pip install -r /tmp/req.txt
    ```
-4. Install CuPy and the imaging extras:
+4. Install CuPy and the imaging extras. OpenCV must be **below version 5** to work w/ PanoRadar:
    ```bash
-   python -m pip install "cupy-cuda12x[ctk]" opencv-python scikit-image scipy matplotlib tqdm
+   python -m pip install "cupy-cuda12x[ctk]" "opencv-python<5" scikit-image scipy matplotlib tqdm
    ```
-5. Check it works. It should print your GPU's name:
+5. Check it works (should print GPU name):
    ```bash
    python -c "import cupy as cp; print('GPU:', cp.cuda.runtime.getDeviceProperties(0)['name'].decode())"
    ```
 
 > [!NOTE]
-> Always use `python -m pip`, not `pip`, inside the PanoRadar environment, and
-> run `deactivate` first if `(.venv)` is showing. Mixing environments is what
-> causes `No module named cupy`. detectron2 isn't needed; it's only for
-> PanoRadar's ML models.
+> Use `python -m pip`, not `pip`, inside the PanoRadar environment, and
+> run `deactivate` first if `(.venv)` is showing. 
+> Detectron2 not needed for this part (only for PanoRadar ML models) 
 
-### A6. Link the PanoRadar sample data
+### A6. Link the PanoRadar sample (instead of copying GB)
+This is for my downloaded data, but path should be changed accordingly.
 
 ```bash
 mkdir -p ~/PanoRadar/data/raw
 ln -s ~/Downloads/design/* ~/PanoRadar/data/raw/
-ls ~/PanoRadar/data/raw          # should list design_static (and design_moving)
+ls ~/PanoRadar/data/raw          
 ```
 
-### How to make a PanoRadar image
+### Make PanoRadar image
 
 PanoRadar's `run.py imaging` has a typo (`out_plot_path`) that makes it crash,
-so call the same function directly:
+so need to call the same function directly:
 
 ```bash
 cd ~/PanoRadar && conda activate panoradar
@@ -138,7 +132,7 @@ python -c "from panoradar_SP import imaging_result; imaging_result.imaging_frame
 ```
 
 This saves `imaging_result.png` in `~/PanoRadar`. One frame = one full
-rotation. Each run overwrites the last image, so rename any you want to keep.
+rotation. 
 
 ---
 
@@ -154,7 +148,7 @@ mv imaging_result.png imaging_sample.png
 
 ✅ `imaging_sample.png` shows a map of a room.
 
-**B2. Make a fake recording and convert it** (proves your converter works):
+**B2. Make a fake recording and convert it** (proves converter works):
 
 ```bash
 conda deactivate; cd ~/fireflight-radar-testing && source .venv/bin/activate
@@ -164,7 +158,7 @@ deactivate
 ```
 
 ✅ Prints `Rotations: 6 full, 1198 beams each`. (`--r-radar 0.077` is the fake
-platform's radius, so you don't need to edit `config.yaml` for this test.)
+platform's radius, so no need to edit `config.yaml` for this test.)
 
 **B3. Image the fake recording:**
 
@@ -184,6 +178,24 @@ python ~/fireflight-radar-testing/inspect_traj.py data/raw/design_static/exp2023
 
 ✅ Both show `radar_data.npy shape (…, 2, 4, 256) complex64` and about 1200
 beams/rotation.
+
+
+**B5. Moving data (fake walk):**
+
+```bash
+conda deactivate; cd ~/fireflight-radar-testing && source .venv/bin/activate
+python simulate_session.py --out sessions/walk_20261028-000000 --seconds 6 --walk-speed 0.5
+python build_traj.py sessions/walk_20261028-000000 --building ~/PanoRadar/data/raw/sim_moving --r-radar 0.077
+deactivate
+cd ~/PanoRadar && conda activate panoradar
+python run.py motion_estimation --in_building_folder data/raw/sim_moving
+python -c "from panoradar_SP import imaging_result; imaging_result.imaging_frame_from_traj('data/raw/sim_moving/exp20261028-000', 3, '.')"
+```
+
+✅ `build_traj.py` prints `Mode: MOVING`. Motion estimation finishes with a
+progress bar (a few `Open3D WARNING ... no data` lines are normal: there's no
+LiDAR). The image shows the 4 dots, shifted left by how far the fake platform
+walked.
 
 ---
 
@@ -229,7 +241,7 @@ beams/rotation.
    deactivate
    ```
 9. **Live radar check.** Power the radar on and wait about 30 s, then run xwr's
-   demo. A plot that changes when you wave your hand means everything works:
+   demo:
    ```bash
    curl -LsSf https://astral.sh/uv/install.sh | sh && source ~/.bashrc
    cd ~/xwr/demo && uv run demo.py --device AWR1843L --rsp AWR1642Boost
@@ -246,8 +258,7 @@ platform:
 > [!IMPORTANT]
 > #### Measuring the rotation radius
 > `r_radar_m` is the **horizontal distance from the rotation axis to the
-> radar's antennas**. PanoRadar uses it to focus the image, so a wrong value
-> makes it blurry.
+> radar's antennas** that PanoRadar uses to focus the image. 
 >
 > 1. Stop the motor and power off the radar.
 > 2. Find the **rotation axis**: the centre of the motor shaft.
@@ -259,32 +270,24 @@ platform:
 >    shaft to the antenna face, then **add half the shaft's diameter**.
 > 5. Convert to metres (77 mm → `0.077`) and put it in `config.yaml`.
 >
-> Aim for ±1–2 mm; the radar's wavelength is only 3.9 mm. PanoRadar's own rig
-> was 0.077 m. If images look slightly smeared, re-measure, or try ±3 mm.
-
-To find `motor_ticks_per_rev`, ask the motor-code author, or mark the platform,
-turn it exactly one full turn by hand while `motor_logger.py` runs (C3), and
-see how much the count changed.
 
 ### C3. Arduino motor logger
 
 1. The Arduino sketch must print **one reading per line**, e.g.
    `Serial.println(ticks);`, with `Serial.begin(115200)`.
-2. Upload the sketch, then **close the Arduino IDE's Serial Monitor**. Only one
-   program can use the USB port.
+2. Upload the sketch, then **close the Arduino IDE's Serial Monitor** since only one program can use the USB port. 
 3. Find the Arduino's port. The radar uses `ttyACM0` and `ttyACM1`, so on the
    radar PC the Arduino is usually `ttyACM2`:
    ```bash
    ls /dev/ttyACM* /dev/ttyUSB*
    ```
-4. Start the motor, then the logger:
+4. Start the motor, then the logger in separate terminals:
    ```bash
    cd ~/fireflight-radar-testing && source .venv/bin/activate
    python motor_logger.py --port /dev/ttyACM2 --out motor_test.csv
    ```
-5. Every 2 s it prints the speed and the beams per rotation it gives. **Adjust
+5. Every 2 s it prints the speed and the beams per rotation it gives. **If needed, adjust
    the motor until it reads about 1200 beams/rotation (1.70 rev/s, 102 rpm).**
-   Stop with Ctrl-C.
 
 > [!WARNING]
 > **Arduino on a different computer from the radar?** The two clocks must
@@ -325,19 +328,205 @@ see how much the count changed.
    python -c "from panoradar_SP import imaging_result; imaging_result.imaging_frame_from_traj('data/raw/lab1_static/exp<date>-000', 0, '.')"
    ```
 
-Recordings are about 17 MB/s (≈500 MB per 30 s). `sessions/` is git-ignored.
+### C5. Moving recordings (carrying the radar)
 
-### If something's off
+Moving data is recorded the same way. The difference is the **folder name**
+and one extra PanoRadar step.
 
-| Symptom | Fix |
-|---|---|
-| `Device or resource busy: /dev/ttyACM0` | Radar still booting; wait 10–30 s |
-| Radar hangs after `sensorStart` | Set `frequency: 76.0` in `config.yaml` |
-| Capture times out | Check `ip -br addr` shows `192.168.33.30`; reseat the LVDS ribbon |
-| Many incomplete beams | Check `sysctl net.core.rmem_max` is 6291456; use a dedicated Ethernet port |
-| `motor_logger.py` can't open the port | Close the Arduino Serial Monitor; check `--port` |
-| `Rotation radius not set` | Fill in `platform: r_radar_m` in `config.yaml` (C2) |
-| `Fewer than one full rotation` | Motor not spinning, or wrong `motor_ticks_per_rev` |
-| Image mirrored | Add `--direction ccw` to `build_traj.py` |
-| Targets smeared or at the wrong distance | Re-measure the radius; or add `--conjugate` to `build_traj.py` |
-| No motor log yet | Add `--assume-rev-per-s 1.7` (sharp targets, but the image is rotated by an unknown angle) |
+> [!IMPORTANT]
+> - **Folder name must NOT contain `static`**, e.g. `lab1_moving`. That's how
+>   PanoRadar knows the platform was moving.
+> - **Walk slowly and straight** (about 0.5 m/s), keep the radar level, and
+>   **avoid turning**. PanoRadar corrects turns using an IMU, which this setup
+>   doesn't have, so turns blur the image.
+> - Keep the motor at **1200 beams/rotation** the whole time.
+
+1. Record: same as C4 steps 1–5 (motor logger + `record.py`), while walking.
+2. **Convert into a `_moving` folder:**
+   ```bash
+   cd ~/fireflight-radar-testing && source .venv/bin/activate
+   python build_traj.py sessions/walk1_<date-time> --motor-csv motor_walk1.csv \
+       --building ~/PanoRadar/data/raw/lab1_moving
+   deactivate
+   ```
+   ✅ It prints `Mode: MOVING`. The first and last half-rotation are dropped:
+   PanoRadar pads each moving frame with beams from its neighbours.
+3. **Estimate the motion** (PanoRadar's step; writes `motion_output.npz` into
+   each trajectory folder):
+   ```bash
+   cd ~/PanoRadar && conda activate panoradar
+   python run.py motion_estimation --in_building_folder data/raw/lab1_moving
+   ```
+   `Open3D WARNING ... no data` lines are normal. The `*_gt` values it saves
+   are zeros, because they come from the LiDAR; the speed estimate itself
+   (`v_esti`) comes from the radar.
+4. **Image a frame:**
+   ```bash
+   python -c "from panoradar_SP import imaging_result; imaging_result.imaging_frame_from_traj('data/raw/lab1_moving/exp<date>-000', 0, '.')"
+   ```
+
+### C6. Recording with ROS 2 instead (same as record.py)
+
+- xwr ROS node publishes each radar frame on `/xwr/iq`
+- `bag_to_session.py` turns it into a normal session folder, then everything from C4 step 6 onwards is the same
+
+*The stuff below is for Sadhana (since I'm on 24.04):*
+
+> [!NOTE]
+> Ubuntu 24.04 uses **ROS 2 Jazzy** (Humble is only for 22.04). The xwr ROS
+> node hasn't been tested on Jazzy; `bag_to_session.py` reads Jazzy bags.
+
+**One-time setup**
+
+1. Install ROS 2 Jazzy:
+   ```bash
+   sudo apt install -y software-properties-common && sudo add-apt-repository -y universe
+   sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
+   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
+   sudo apt update && sudo apt install -y ros-jazzy-desktop ros-dev-tools
+   ```
+2. Install the build plugin, and the bag reader into this repo's environment:
+   ```bash
+   pip install --break-system-packages uv colcon-uv
+   cd ~/fireflight-radar-testing && source .venv/bin/activate && pip install rosbags && deactivate
+   ```
+3. Let git download the node's xwr submodule without an SSH key:
+   ```bash
+   git config --global url."https://github.com/".insteadOf git@github.com:
+   ```
+4. Create the workspace and build the node:
+   ```bash
+   mkdir -p ~/ros2_ws/src ~/ros2_ws/config && cd ~/ros2_ws/src
+   git clone --recurse-submodules https://github.com/RadarML/xwr_ros.git
+   cd ~/ros2_ws && source /opt/ros/jazzy/setup.bash
+   UV_VENV_CLEAR=1 UV_LINK_MODE=symlink colcon build --packages-select xwr_ros xwr_msgs
+   ```
+5. Make the node's config: a copy of `config.yaml` **without** the
+   `platform:` section (the node passes the whole file to xwr, which rejects
+   it). Re-run this whenever you change the radar settings:
+   ```bash
+   cd ~/fireflight-radar-testing
+   python3 -c "import yaml; c = yaml.safe_load(open('config.yaml')); c.pop('platform', None); yaml.safe_dump(c, open('$HOME/ros2_ws/config/panoradar.yaml', 'w'))"
+   ```
+
+**Every recording.** Use three terminals; in each one first run
+`source /opt/ros/jazzy/setup.bash && source ~/ros2_ws/install/setup.bash`.
+
+1. **Terminal 1, radar node** (give the path without `.yaml`):
+   ```bash
+   ros2 launch xwr_ros radar.launch.py config:=$HOME/ros2_ws/config/panoradar
+   ```
+2. **Check it's streaming** in another terminal. It should show about 2040 Hz:
+   ```bash
+   ros2 topic hz /xwr/iq
+   ```
+3. **Terminal 2, motor log** (same as C4; no ROS needed):
+   ```bash
+   cd ~/fireflight-radar-testing && source .venv/bin/activate
+   python motor_logger.py --port /dev/ttyACM2 --out ~/bags/lab1_motor.csv
+   ```
+4. **Terminal 3, record the bag:**
+   ```bash
+   mkdir -p ~/bags && ros2 bag record -o ~/bags/lab1 /xwr/iq /xwr/info
+   ```
+5. Stop with **Ctrl-C** in the order: bag (terminal 3), motor logger, radar node.
+6. **Turn the bag into a session folder** (ROS doesn't need to be sourced):
+   ```bash
+   cd ~/fireflight-radar-testing && source .venv/bin/activate
+   python bag_to_session.py ~/bags/lab1 --config config.yaml --motor-csv ~/bags/lab1_motor.csv
+   ```
+   It prints the session folder it made (`sessions/lab1_<date-time>`).
+7. **Convert and image** exactly as in C4 step 6 onwards (static) or C5
+   (moving). The motor log was already copied into the session folder, so
+   `--motor-csv` can be left out.
+
+### C7. ROS 2 Humble in Docker (optional, instead of C6)
+
+Use this if you need ROS 2 **Humble** (e.g. to match lab machines) on Ubuntu
+24.04. The container runs Ubuntu 22.04 with Humble inside; your system is
+unchanged. It uses the PC's network port (`--net=host`), USB ports
+(`--privileged -v /dev:/dev`) and clock, so timestamps still line up with
+`motor_logger.py` running outside it. Workspace and bags live in folders on the
+PC, so they survive the container.
+
+> [!NOTE]
+> These Docker steps haven't been tested on hardware yet. Do C1 (network,
+> buffer, USB permissions) on the PC first; the container uses those settings.
+
+**One-time setup** (on the PC unless it says "inside the container")
+
+1. Install Docker, then **log out and back in**:
+   ```bash
+   sudo apt install -y docker.io
+   sudo usermod -aG docker $USER
+   ```
+2. Create the shared folders and the node's config (the node needs
+   `config.yaml` **without** its `platform:` section; re-run this whenever you
+   change radar settings):
+   ```bash
+   mkdir -p ~/ros2_ws/src ~/ros2_ws/config ~/bags
+   cd ~/fireflight-radar-testing
+   python3 -c "import yaml; c = yaml.safe_load(open('config.yaml')); c.pop('platform', None); yaml.safe_dump(c, open('$HOME/ros2_ws/config/panoradar.yaml', 'w'))"
+   ```
+3. Install the bag reader into this repo's environment:
+   ```bash
+   source .venv/bin/activate && pip install rosbags && deactivate
+   ```
+4. Create the container. Plug the radar in first. `xhost` lets it open
+   windows such as rviz2:
+   ```bash
+   xhost +local:
+   docker run -it --name humble --net=host --privileged -v /dev:/dev \
+     -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix \
+     -v ~/ros2_ws:/root/ros2_ws -v ~/bags:/root/bags \
+     osrf/ros:humble-desktop bash
+   ```
+5. **Inside the container**, build the radar node:
+   ```bash
+   apt update && apt install -y python3-pip git
+   pip install uv colcon-uv
+   git config --global url."https://github.com/".insteadOf git@github.com:
+   cd /root/ros2_ws/src && git clone --recurse-submodules https://github.com/RadarML/xwr_ros.git
+   cd /root/ros2_ws && source /opt/ros/humble/setup.bash
+   UV_VENV_CLEAR=1 UV_LINK_MODE=symlink colcon build --packages-select xwr_ros xwr_msgs
+   exit
+   ```
+
+**Every recording**
+
+1. Start the container and open terminals in it. Plug the radar in first:
+   ```bash
+   xhost +local:
+   docker start -ai humble        # container terminal 1
+   docker exec -it humble bash    # container terminal 2 (in a new PC terminal)
+   ```
+   In **every** container terminal, first run:
+   ```bash
+   source /opt/ros/humble/setup.bash && source /root/ros2_ws/install/setup.bash
+   ```
+2. **Container terminal 1, radar node:**
+   ```bash
+   ros2 launch xwr_ros radar.launch.py config:=/root/ros2_ws/config/panoradar
+   ```
+3. **Container terminal 2, check it's streaming.** It should show about
+   2040 Hz; stop it with Ctrl-C:
+   ```bash
+   ros2 topic hz /xwr/iq
+   ```
+4. **PC terminal, motor log** (outside the container, as in C4):
+   ```bash
+   cd ~/fireflight-radar-testing && source .venv/bin/activate
+   python motor_logger.py --port /dev/ttyACM2 --out ~/bags/lab1_motor.csv
+   ```
+5. **Container terminal 2, record the bag:**
+   ```bash
+   ros2 bag record -o /root/bags/lab1 /xwr/iq /xwr/info
+   ```
+6. Stop with **Ctrl-C** in the order: bag, motor logger, radar node.
+7. **Convert on the PC** (the bag is in `~/bags/lab1`):
+   ```bash
+   cd ~/fireflight-radar-testing && source .venv/bin/activate
+   sudo chown -R $USER ~/bags     # the container saves files as root
+   python bag_to_session.py ~/bags/lab1 --config config.yaml --motor-csv ~/bags/lab1_motor.csv
+   ```
+   Then continue with `build_traj.py` as in C4 step 6 (static) or C5 (moving).

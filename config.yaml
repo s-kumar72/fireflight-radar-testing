@@ -1,6 +1,4 @@
 # Radar & capture card settings, mostly same as PanoRadar
-# Passed into xwr.XWRSystem(**cfg)
-# Same chirp settings as PanoRadar uses
 
 radar:
   device: AWR1843L
