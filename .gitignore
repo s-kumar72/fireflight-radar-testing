@@ -1,0 +1,20 @@
+# Recordings and converted data: far too big for git (about 8 MB/s)
+sessions/
+data/
+bags/
+*.bin
+*.npy
+*.npz
+*.db3
+*.mcap
+imaging_result.png
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Editors
+.vscode/
+.idea/

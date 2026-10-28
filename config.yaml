@@ -1,0 +1,29 @@
+# Radar & capture card settings, mostly same as PanoRadar
+# Passed into xwr.XWRSystem(**cfg)
+# Same chirp settings as PanoRadar uses
+
+radar:
+  device: AWR1843L
+  port: null
+  frequency: 77.0     # GHz
+  idle_time: 7.0      # us
+  adc_start_time: 5.7 # us
+  ramp_end_time: 56.5 # us
+  tx_start_time: 1.0  # us
+  freq_slope: 79.951  # MHz/us
+  adc_samples: 256
+  sample_rate: 5120   # ksps
+  frame_length: 1     # ms
+  frame_period: 0.491
+
+capture:
+  sys_ip: 192.168.33.30
+  fpga_ip: 192.168.33.180
+  data_port: 4098
+  config_port: 4096
+  socket_buffer: 6291456
+
+platform:
+  r_radar_m: null
+  motor_tocks_per_rev: null
+
