@@ -23,5 +23,5 @@ capture:
 
 platform:
   r_radar_m: null
-  motor_tocks_per_rev: null
+  motor_tocks_per_rev: 3200
 
