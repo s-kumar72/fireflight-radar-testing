@@ -22,6 +22,6 @@ capture:
   socket_buffer: 6291456
 
 platform:
-  r_radar_m: null
+  r_radar_m: 0.081
   motor_tocks_per_rev: 3200
 
