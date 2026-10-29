@@ -8,6 +8,8 @@ bags/
 *.db3
 *.mcap
 imaging_result.png
+.DS_Store
+arduino/.DS_Store
 
 # Python
 __pycache__/
