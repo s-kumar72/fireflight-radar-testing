@@ -1,0 +1,36 @@
+# Radar + capture-card settings, passed to xwr.XWRSystem(**cfg).
+# AWR1843L = 2 TX x 4 RX = the 8 antennas PanoRadar expects.
+# STOCK TI FIRMWARE (what's on the AWR1843AOP board now): it needs >= 16 chirps
+# per frame, so each frame holds 16 beams 0.491 ms apart (idle_time spreads them
+# out) and build_traj.py splits frames back into beams: ~2010 beams/s on average.
+# frequency 76.0 keeps the whole sweep under the chip's 81 GHz limit.
+# With xwr's custom firmware instead: frame_length 1, idle_time 7.0,
+# frame_period 0.491 (one beam per frame, exactly PanoRadar's timing).
+
+radar:
+  device: AWR1843L
+  port: /dev/ttyUSB0     # AWR1843AOPEVM: its "CP2105 ... Enhanced" port (Boost board: null = auto-detect)
+  frequency: 77.0       # GHz, chirp start
+  idle_time: 140.5      # us; spaces chirp loops 0.491 ms apart
+  adc_start_time: 4.0    # us
+  ramp_end_time: 105.0  # us; 38 MHz/us x 105 us = 3.99 GHz sweep (limit 4)
+  tx_start_time: 1.0    # us
+  freq_slope: 38.0     # MHz/us
+  adc_samples: 256
+  sample_rate: 2560     # ksps
+  frame_length: 16      # chirp loops (= beams) per frame; stock firmware needs >= 16
+  frame_period: 8.0     # ms per 16-beam frame; 7.95 leaves too small a gap
+ 
+capture:
+  sys_ip: 192.168.33.30
+  fpga_ip: 192.168.33.180
+  data_port: 4098
+  config_port: 4096
+  socket_buffer: 6291456
+ 
+# Your rotating platform (used by build_traj.py, simulate_session.py, motor_logger.py;
+# not sent to the radar). Fill these in before converting real recordings.
+platform:
+  r_radar_m: null            # MEASURE IT: rotation axis -> antenna face, metres (PanoRadar's rig: 0.077)
+  motor_ticks_per_rev: null  # Arduino counts per full turn; null = the Arduino prints degrees
+ 
