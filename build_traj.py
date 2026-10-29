@@ -4,21 +4,21 @@
         --building ~/PanoRadar/data/raw/lab1_static --r-radar 0.08
 
 Each rotation (motor angle passing --zero-angle) becomes one PanoRadar frame.
-Keep "static" in the building folder name. LiDAR/IMU files are zero placeholders for now.
+Keep "static" in the building folder name. LiDAR/IMU files are zero placeholders.
 """
 
 from __future__ import annotations
- 
+
 import argparse
 import json
 from pathlib import Path
- 
+
 import numpy as np
 import yaml
- 
+
 C = 2.99792e8
- 
- 
+
+
 # ---------------------------------------------------------------- radar data
 def iq_from_iiqq(iiqq: np.ndarray) -> np.ndarray:
     """xwr's default MSB_LSB_IQ layout -> complex64 (same as xwr.rsp.iq_from_iiqq)."""
@@ -26,8 +26,8 @@ def iq_from_iiqq(iiqq: np.ndarray) -> np.ndarray:
     out[..., 0::2] = iiqq[..., 2::4] + 1j * iiqq[..., 0::4]
     out[..., 1::2] = iiqq[..., 3::4] + 1j * iiqq[..., 1::4]
     return out
- 
- 
+
+
 def fit_timestamps(ts: np.ndarray, period_s: float) -> tuple[np.ndarray, dict]:
     """Beams are hardware-timed, so fit ts = a + b*i to remove network jitter."""
     i = np.arange(len(ts))
@@ -43,8 +43,8 @@ def fit_timestamps(ts: np.ndarray, period_s: float) -> tuple[np.ndarray, dict]:
     # Arrival time lags capture time a little; the minimum residual is the
     # least-delayed beam, so shift the fit down to it.
     return a + b * i + res.min(), info
- 
- 
+
+
 # ---------------------------------------------------------------- motor data
 def load_motor(path: Path, ts_col: str, angle_col: str, units: str,
                steps_per_rev: float | None) -> tuple[np.ndarray, np.ndarray]:
@@ -56,19 +56,19 @@ def load_motor(path: Path, ts_col: str, angle_col: str, units: str,
         data = np.genfromtxt(path, delimiter=",", names=True, dtype=float,
                              invalid_raise=False)
         names = data.dtype.names
- 
+
         def col(c):
             return data[names[int(c)]] if c.isdigit() else data[c]
         t, ang = col(ts_col), col(angle_col)
     else:
         data = np.genfromtxt(path, delimiter=",", dtype=float, invalid_raise=False)
         t, ang = data[:, int(ts_col)], data[:, int(angle_col)]
- 
+
     ok = np.isfinite(t) & np.isfinite(ang)
     t, ang = t[ok], ang[ok]
     order = np.argsort(t, kind="stable")
     t, ang = t[order], ang[order]
- 
+
     if units == "rad":
         ang = np.rad2deg(ang)
     elif units == "steps":
@@ -82,15 +82,15 @@ def load_motor(path: Path, ts_col: str, angle_col: str, units: str,
             f"{path}: timestamps don't look like Unix epoch seconds (min {t.min():.1f}). "
             "Motor and radar must share the PC clock (time.time()).")
     return t, ang
- 
- 
+
+
 def rotation_starts(angle_at_beam: np.ndarray, zero_deg: float) -> np.ndarray:
     """Indices of the first beam of each full rotation (angle passes zero_deg)."""
     direction = np.sign(angle_at_beam[-1] - angle_at_beam[0]) or 1.0
     turns = np.floor(direction * (angle_at_beam - zero_deg) / 360.0)
     return np.flatnonzero(np.diff(turns) != 0) + 1
- 
- 
+
+
 # ---------------------------------------------------------------- main
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
@@ -130,7 +130,7 @@ def main() -> None:
     p.add_argument("--traj-prefix", default=None,
                    help="trajectory folder prefix (default exp<session date>)")
     args = p.parse_args()
- 
+
     plat = {}
     if args.config.exists():
         plat = (yaml.safe_load(args.config.read_text()) or {}).get("platform") or {}
@@ -142,18 +142,18 @@ def main() -> None:
     angle_units = args.angle_units or ("steps" if steps_per_rev else "deg")
     print(f"Platform: r_radar = {r_radar} m, motor units = {angle_units}"
           + (f" ({steps_per_rev:g} ticks/rev)" if angle_units == "steps" else ""))
- 
+
     sess = args.session
     meta = json.loads((sess / "session.json").read_text())
     rad = meta["radar"]
     chirps, n_tx, n_rx, raw_last = meta["raw_shape"]
     n_samp = meta["shape"][-1]
     frame_bytes = meta["frame_bytes"]
- 
-    if "static" not in args.building.name:
-        print(f"WARNING: building folder '{args.building.name}' has no 'static' in its "
-              "name; PanoRadar will try motion estimation, which needs real LiDAR/IMU.")
- 
+
+    # PanoRadar decides static vs moving from the building folder's name
+    moving = "static" not in args.building.name
+    print(f"Mode: {'MOVING' if moving else 'static'} (building folder '{args.building.name}')")
+
     # --- radar frames + timestamps
     raw = np.memmap(sess / "radar_raw.bin", dtype=np.int16, mode="r")
     n_bin = raw.size * 2 // frame_bytes
@@ -163,15 +163,27 @@ def main() -> None:
     ts_raw, complete = ts_tab[:n, 0], ts_tab[:n, 1].astype(bool)
     print(f"Radar: {n} beams, {np.count_nonzero(~complete)} incomplete, "
           f"{(ts_raw[-1] - ts_raw[0]):.1f} s")
- 
+
     if args.raw_ts:
         ts = ts_raw
     else:
         ts, info = fit_timestamps(ts_raw, rad["frame_period"] / 1e3)
-        print(f"  beam period {info['fitted_period_ms']:.4f} ms "
+        print(f"  frame period {info['fitted_period_ms']:.4f} ms "
               f"(config {info['config_period_ms']:.4f}), arrival jitter p99 "
               f"{info['jitter_ms_p99']:.2f} ms")
- 
+
+    if chirps > 1:
+        # Stock TI firmware needs >= 16 chirps per frame. Each chirp loop (all TX
+        # once) is one PanoRadar beam, so split every frame into its loops and
+        # give each loop its own time: frame start + k * loop period.
+        loop_s = n_tx * (rad["idle_time"] + rad["ramp_end_time"]) * 1e-6
+        raw = raw.reshape(n * chirps, 1, n_tx, n_rx, raw_last)
+        ts = (ts[:, None] + np.arange(chirps)[None] * loop_s).ravel()
+        complete = np.repeat(complete, chirps)
+        print(f"  split {n} frames x {chirps} chirps -> {n * chirps} beams, "
+              f"{loop_s * 1e3:.3f} ms apart within a frame")
+        n, chirps = n * chirps, 1
+
     # --- motor angle at every beam
     motor_csv = args.motor_csv or sess / "motor.csv"
     if args.assume_rev_per_s:
@@ -189,14 +201,14 @@ def main() -> None:
     if not args.assume_rev_per_s:
         print(f"Motor: {len(mt)} readings at {len(mt) / (mt[-1] - mt[0]):.0f} Hz, "
               f"speed {np.median(np.abs(rate)) / 360:.3f} rev/s")
- 
+
     inside = (ts >= mt[0]) & (ts <= mt[-1])
     if not inside.any():
         raise SystemExit("Motor log and radar recording don't overlap in time.")
     lo, hi = np.flatnonzero(inside)[[0, -1]]
     raw, ts, complete = raw[lo:hi + 1], ts[lo:hi + 1], complete[lo:hi + 1]
     ang = np.interp(ts, mt, mang)
- 
+
     order = np.arange(len(ts))
     if args.direction == "ccw":
         order = order[::-1]
@@ -206,11 +218,20 @@ def main() -> None:
     if len(starts) < 2:
         raise SystemExit("Fewer than one full rotation found. Is the motor spinning, "
                          "and are --angle-units right?")
+    if moving:
+        # Moving frames borrow half a rotation of beams on each side (PanoRadar pads
+        # each frame with neighbouring beams), so keep only rotations that have them.
+        margin = int(np.median(np.diff(starts))) // 2
+        starts = starts[(starts >= margin) & (starts + margin < len(ts))]
+        if len(starts) < 2:
+            raise SystemExit("Recording too short for moving data: record a few more rotations.")
+    else:
+        margin = 0
     per_rot = np.diff(starts)
     spread = (per_rot.max() - per_rot.min()) / np.median(per_rot)
     print(f"Rotations: {len(per_rot)} full, {np.median(per_rot):.0f} beams each "
           f"(min {per_rot.min()}, max {per_rot.max()})")
-    beam_s = rad["frame_period"] / 1e3
+    beam_s = rad["frame_period"] / rad.get("frame_length", 1) / 1e3  # average time per beam
     med = float(np.median(per_rot))
     if abs(med - 1200) / 1200 > 0.05:
         print(f"NOTE: {med:.0f} beams/rotation; the PanoRadar dataset has 1200. Your motor ran "
@@ -219,7 +240,7 @@ def main() -> None:
     if spread > 0.03:
         print("WARNING: beams per rotation vary by >3%. PanoRadar assumes evenly "
               "spaced beams, so keep the motor at constant speed.")
- 
+
     # --- chirp parameters actually used
     fs = rad["sample_rate"] * 1e3
     slope = rad["freq_slope"] * 1e12
@@ -236,7 +257,7 @@ def main() -> None:
     if params["n_virtual_antennas"] != 8:
         print(f"WARNING: {params['n_virtual_antennas']} virtual antennas; PanoRadar's "
               "vertical beamforming assumes 8 (use device AWR1843L).")
- 
+
     # --- write trajectories
     prefix = args.traj_prefix or "exp" + sess.name.split("_")[-1].split("-")[0]
     args.building.mkdir(parents=True, exist_ok=True)
@@ -246,11 +267,12 @@ def main() -> None:
         seps = starts[i0: min(i0 + R, len(starts) - 1) + 1]
         if len(seps) < 2:
             break
-        # end one beam past the last rotation start: PanoRadar indexes radar_ts[radar_sep]
-        b0, b1 = seps[0], seps[-1] + 1
+        # end one beam past the last rotation start (PanoRadar indexes radar_ts[radar_sep]),
+        # plus the padding margin on both sides for moving data
+        b0, b1 = seps[0] - margin, seps[-1] + 1 + margin
         out = args.building / f"{prefix}-{k:03d}"
         out.mkdir(parents=True, exist_ok=True)
- 
+
         data = np.lib.format.open_memmap(
             out / "radar_data.npy", mode="w+", dtype=np.complex64,
             shape=(int(b1 - b0), int(chirps * n_tx), int(n_rx), int(n_samp)))
@@ -266,7 +288,7 @@ def main() -> None:
         data.flush()
         del data
         np.savetxt(out / "radar_ts.txt", ts[b0:b1], fmt="%.6f")
- 
+
         radar_sep = (seps - b0).astype(np.int64)
         n_fr = len(radar_sep)
         # placeholders: one LiDAR "scan" and one IMU reading per rotation
@@ -284,11 +306,11 @@ def main() -> None:
                  "source_session": str(sess)}, indent=2))
         print(f"  wrote {out}  ({n_fr - 1} frames, {b1 - b0} beams)")
         n_traj += 1
- 
+
     print(f"Done: {n_traj} trajectories in {args.building}")
     print("Image one frame with:\n  python run.py imaging --in_traj_folder "
           f"{args.building}/{prefix}-000 --frame_num 0 --out_plot_folder .")
- 
- 
+
+
 if __name__ == "__main__":
     main()

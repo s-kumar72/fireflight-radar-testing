@@ -2,6 +2,11 @@
 strongest reflections, and save a range plot.
 
     python check_range.py sessions/still1_<date-time>
+
+Put a strong reflector (a metal plate, a laptop lid, a wall) straight in front
+of the radar at a known distance, e.g. 2.00 m. The top peak should be within a
+few cm of it. If it matches the "if I/Q is flipped" column instead, use
+build_traj.py --conjugate for this radar.
 """
 
 import argparse
@@ -19,7 +24,7 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("session", type=Path)
-    p.add_argument("--beams", type=int, default=2000, help="how many beams to average")
+    p.add_argument("--beams", type=int, default=2000, help="how many radar frames to average")
     p.add_argument("--peaks", type=int, default=5)
     a = p.parse_args()
 
@@ -55,7 +60,7 @@ def main() -> None:
     idx = idx[idx >= first]
     idx = idx[np.argsort(db[idx])[::-1]][:a.peaks]
 
-    print(f"{take} beams from {a.session.name}; {bin_m * 100:.2f} cm per bin, "
+    print(f"{take} frames ({take * chirps} beams) from {a.session.name}; {bin_m * 100:.2f} cm per bin, "
           f"scale 0 to {ranges[-1]:.2f} m")
     print("strongest reflections (compare with your tape measure):")
     print("   distance    power   distance if I/Q is flipped")
