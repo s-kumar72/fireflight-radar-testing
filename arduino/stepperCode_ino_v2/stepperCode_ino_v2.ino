@@ -4,7 +4,8 @@
 // #define RPS 2
 #define PUL_PER_REV 3200  // This is a physical configuration on the stepper motor driver
 
-const float RPS = 1.697; // maps to 102 rpm for PanoRadar
+// const float RPS = 1.697; // maps to 102 rpm for PanoRadar
+const float RPS = 0.5;
 
 const unsigned long PUL_FREQ = RPS * PUL_PER_REV;                  // 1600 Hz
 const unsigned long PUL_PERIOD = 1000000UL / PUL_FREQ;             // 625 us
@@ -48,7 +49,7 @@ void loop() {
   }
 
   if (now - lastReport >= REPORT_PERIOD) {
-    lastREport += REPORT_PERIOD;
+    lastReport += REPORT_PERIOD;
     Serial.println(ticks); // one number per line to be read by motor logger
   }
 }

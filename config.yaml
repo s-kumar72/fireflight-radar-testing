@@ -11,7 +11,7 @@ radar:
   device: AWR1843L
   port: /dev/ttyUSB0     # AWR1843AOPEVM: its "CP2105 ... Enhanced" port (Boost board: null = auto-detect)
   frequency: 77.0       # GHz, chirp start
-  idle_time: 140.5      # us; spaces chirp loops 0.491 ms apart
+  idle_time: 724.0      # us; spaces chirp loops 0.491 ms apart
   adc_start_time: 4.0    # us
   ramp_end_time: 105.0  # us; 38 MHz/us x 105 us = 3.99 GHz sweep (limit 4)
   tx_start_time: 1.0    # us
@@ -19,7 +19,7 @@ radar:
   adc_samples: 256
   sample_rate: 2560     # ksps
   frame_length: 16      # chirp loops (= beams) per frame; stock firmware needs >= 16
-  frame_period: 8.0     # ms per 16-beam frame; 7.95 leaves too small a gap
+  frame_period: 26.67    # ms per 16-beam frame; 7.95 leaves too small a gap
  
 capture:
   sys_ip: 192.168.33.30
@@ -31,6 +31,6 @@ capture:
 # Your rotating platform (used by build_traj.py, simulate_session.py, motor_logger.py;
 # not sent to the radar). Fill these in before converting real recordings.
 platform:
-  r_radar_m: null            # MEASURE IT: rotation axis -> antenna face, metres (PanoRadar's rig: 0.077)
-  motor_ticks_per_rev: null  # Arduino counts per full turn; null = the Arduino prints degrees
+  r_radar_m: 0.081           # MEASURE IT: rotation axis -> antenna face, metres (PanoRadar's rig: 0.077)
+  motor_ticks_per_rev: 3200  # Arduino counts per full turn; null = the Arduino prints degrees
  
